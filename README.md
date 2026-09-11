@@ -1,103 +1,10 @@
-# campuslab-ms-bookings
-
-Microservicio de reservas del sistema CampusLab, desarrollado con Spring Boot.
-
-## Descripción
-
-Este microservicio administra las reservas de laboratorios y equipos académicos.  
-Permite crear reservas, listarlas, consultar por ID y actualizar el estado de una reserva.
-
-Según el caso CampusLab, el módulo de gestión de reservas debe manejar el flujo:
-
-```text
-SOLICITADA → APROBADA → EN_PREPARACIÓN → EN_USO → DEVUELTA / CANCELADA
-```
-
-Además, una regla clave es que no se puede pasar una reserva a `EN_USO` sin haber sido aprobada previamente.
-
-## Tecnologías utilizadas
-
-- Java
-- Spring Boot
-- Spring Web
-- Spring Data JPA
-- H2 Database
-- Oracle JDBC Driver
-- Docker
-- Docker Hub
-- GitHub
-
-## Responsabilidad del servicio
-
-- Crear reservas.
-- Listar reservas existentes.
-- Buscar reservas por ID.
-- Actualizar estado de una reserva.
-- Mantener la lógica base del flujo de estados.
-- Dejar preparada la conexión a base de datos cloud mediante variables de entorno.
-
-## Endpoints
-
-| Método | Endpoint | Descripción |
-|---|---|---|
-| POST | `/api/bookings` | Crea una reserva |
-| GET | `/api/bookings` | Lista reservas |
-| GET | `/api/bookings/{id}` | Obtiene una reserva por ID |
-| PUT | `/api/bookings/{id}/status` | Actualiza el estado de una reserva |
-
-## Ejemplo de creación de reserva
-
-```json
-{
-  "userEmail": "estudiante@duocuc.cl",
-  "resourceId": "LAB-REDES-01",
-  "status": "SOLICITADA"
-}
-```
-
-## Estados disponibles
-
-```text
-SOLICITADA
-APROBADA
-EN_PREPARACIÓN
-EN_USO
-DEVUELTA
-CANCELADA
-```
-
-## Variables de entorno
-
-| Variable | Descripción | Valor local |
-|---|---|---|
-| `DB_URL` | URL de conexión a la base de datos | `jdbc:h2:mem:testdb` |
-| `DB_DRIVER` | Driver JDBC | `org.h2.Driver` |
-| `DB_USERNAME` | Usuario de base de datos | `sa` |
-| `DB_PASSWORD` | Contraseña de base de datos | `password` |
-| `DB_DIALECT` | Dialecto Hibernate | `org.hibernate.dialect.H2Dialect` |
-
-## Configuración local
-
-Por defecto, el microservicio usa H2 en memoria:
-
-```yaml
-spring:
-  datasource:
-    url: ${DB_URL:jdbc:h2:mem:testdb}
-    driver-class-name: ${DB_DRIVER:org.h2.Driver}
-    username: ${DB_USERNAME:sa}
-    password: ${DB_PASSWORD:password}
-```
-
-Esto permite ejecutar el servicio localmente sin depender de una base externa.
-
 ## Ejecución local
 
 ```bash
 mvn spring-boot:run
 ```
 
-Puerto local:
+El microservicio queda disponible en:
 
 ```text
 http://localhost:8081
@@ -140,6 +47,22 @@ Respuesta esperada inicial:
 ```json
 []
 ```
+
+## Base de datos
+
+Actualmente el microservicio usa H2 para desarrollo local y ejecución en Docker.
+
+La configuración queda preparada para una base de datos cloud mediante variables de entorno:
+
+```text
+DB_URL
+DB_DRIVER
+DB_USERNAME
+DB_PASSWORD
+DB_DIALECT
+```
+
+Para una entrega cloud, estas variables pueden reemplazarse por los datos de Oracle u otra base de datos indicada por el docente o la plataforma utilizada.
 
 ## Relación con el BFF
 
