@@ -5,6 +5,12 @@ spring:
   application:
     name: ms-campuslab-bookings
 
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:campuslab}
+    password: ${RABBITMQ_PASSWORD:campuslab123}
+
   datasource:
     url: ${DB_URL:jdbc:h2:mem:testdb}
     driver-class-name: ${DB_DRIVER:org.h2.Driver}
@@ -21,3 +27,30 @@ spring:
     console:
       enabled: true
       path: /h2-console
+
+campuslab:
+  rabbitmq:
+
+    exchanges:
+      direct: cmd.direct
+      topic: cmd.topic
+      dead: cmd.dead.dlx
+
+    queues:
+      email: q.cmd.email
+      prep: q.cmd.prep
+      voucher: q.cmd.voucher
+
+      email-dlq: q.cmd.email.dlq
+      prep-dlq: q.cmd.prep.dlq
+      voucher-dlq: q.cmd.voucher.dlq
+
+    routing:
+      email: email.send
+      prep: prep.ticket
+      voucher: voucher.gen
+
+    topic-routing:
+      email: email.*
+      prep: prep.#
+      voucher: voucher.*
