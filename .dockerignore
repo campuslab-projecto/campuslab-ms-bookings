@@ -1,4 +1,6 @@
-target
+target/*
+!target/ms-campuslab-bookings-0.0.1-SNAPSHOT.jar
+
 .idea
 .vscode
 *.iml
