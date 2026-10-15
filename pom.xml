@@ -49,7 +49,12 @@
             <artifactId>ojdbc11</artifactId>
             <scope>runtime</scope>
         </dependency>
-
+        <!-- PostgreSQL para AWS RDS -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <!-- Seguridad -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
