@@ -1,7 +1,20 @@
-target/
+﻿target/
 .idea/
 .vscode/
 *.iml
 *.log
 .DS_Store
 Thumbs.db
+
+# Variables de entorno y archivos sensibles
+.env
+.env.*
+!.env.example
+
+# Bases de datos locales
+*.mv.db
+*.trace.db
+
+# Archivos de claves
+*.pem
+*.key

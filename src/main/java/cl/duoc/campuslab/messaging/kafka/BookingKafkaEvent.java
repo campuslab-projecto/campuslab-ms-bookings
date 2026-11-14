@@ -1,0 +1,13 @@
+
+package cl.duoc.campuslab.messaging.kafka;
+
+import java.time.LocalDateTime;
+
+public record BookingKafkaEvent(
+        String eventId,
+        String eventType,
+        Long bookingId,
+        String status,
+        LocalDateTime timestamp
+) {
+}

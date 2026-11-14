@@ -1,10 +1,19 @@
+
 package cl.duoc.campuslab.service;
 
 import cl.duoc.campuslab.messaging.dto.BookingEventMessage;
+import cl.duoc.campuslab.messaging.kafka.BookingKafkaEvent;
+import cl.duoc.campuslab.messaging.kafka.BookingKafkaProducer;
+import cl.duoc.campuslab.messaging.kafka.OccupancyKafkaEvent;
+import cl.duoc.campuslab.messaging.kafka.OccupancyKafkaProducer;
 import cl.duoc.campuslab.messaging.producer.BookingMessageProducer;
 import cl.duoc.campuslab.model.Booking;
 import cl.duoc.campuslab.model.BookingStatus;
 import cl.duoc.campuslab.repository.BookingRepository;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,16 +25,33 @@ import java.util.UUID;
 @Service
 public class BookingService {
 
+    private static final Logger log =
+            LoggerFactory.getLogger(BookingService.class);
+
     private final BookingRepository bookingRepository;
     private final BookingMessageProducer bookingMessageProducer;
 
+    private final ObjectProvider<BookingKafkaProducer>
+            kafkaProducerProvider;
+
+    private final ObjectProvider<OccupancyKafkaProducer>
+            occupancyProducerProvider;
+
     public BookingService(
             BookingRepository bookingRepository,
-            BookingMessageProducer bookingMessageProducer
+            BookingMessageProducer bookingMessageProducer,
+            ObjectProvider<BookingKafkaProducer> kafkaProducerProvider,
+            ObjectProvider<OccupancyKafkaProducer> occupancyProducerProvider
     ) {
         this.bookingRepository = bookingRepository;
         this.bookingMessageProducer = bookingMessageProducer;
+        this.kafkaProducerProvider = kafkaProducerProvider;
+        this.occupancyProducerProvider = occupancyProducerProvider;
     }
+
+    // ============================================
+    // 1. CREAR RESERVA
+    // ============================================
 
     public Booking createBooking(Booking booking) {
 
@@ -34,6 +60,7 @@ public class BookingService {
 
         Booking savedBooking = bookingRepository.save(booking);
 
+        // RabbitMQ: notificacion de creacion.
         BookingEventMessage message = createEventMessage(
                 savedBooking,
                 "BOOKING_CREATED",
@@ -42,8 +69,18 @@ public class BookingService {
 
         bookingMessageProducer.sendEmailMessage(message);
 
+        // Kafka: auditoria y reportes.
+        publishKafkaEvent(
+                savedBooking,
+                "BOOKING_CREATED"
+        );
+
         return savedBooking;
     }
+
+    // ============================================
+    // 2. CONSULTAR RESERVA POR ID
+    // ============================================
 
     public Booking getBookingById(Long id) {
 
@@ -56,17 +93,25 @@ public class BookingService {
                 );
     }
 
-    public Booking updateStatus(Long id, BookingStatus newStatus) {
+    // ============================================
+    // 3. ACTUALIZAR ESTADO DE RESERVA
+    // ============================================
+
+    public Booking updateStatus(
+            Long id,
+            BookingStatus newStatus
+    ) {
 
         Booking booking = getBookingById(id);
 
         if (newStatus == null) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Debe informar un estado válido"
+                    "Debe informar un estado valido"
             );
         }
 
+        // Validar antes de modificar y guardar.
         validateStatusTransition(
                 booking.getStatus(),
                 newStatus
@@ -74,15 +119,44 @@ public class BookingService {
 
         booking.setStatus(newStatus);
 
-        Booking savedBooking =
-                bookingRepository.save(booking);
+        Booking savedBooking = bookingRepository.save(booking);
 
+        // RabbitMQ: mantener notificaciones.
         publishStatusEvent(savedBooking);
+
+        // Kafka: historial de cambios.
+        publishKafkaEvent(
+                savedBooking,
+                "BOOKING_STATUS_CHANGED"
+        );
+
+        // Kafka: cambios de ocupacion.
+        // Solo publicar al entrar o salir de EN_USO.
+        if (newStatus == BookingStatus.EN_USO) {
+
+            publishOccupancyEvent(
+                    savedBooking,
+                    "OCCUPANCY_STARTED"
+            );
+
+        } else if (newStatus == BookingStatus.DEVUELTA) {
+
+            publishOccupancyEvent(
+                    savedBooking,
+                    "OCCUPANCY_ENDED"
+            );
+        }
 
         return savedBooking;
     }
 
-    public List<Booking> getAllBookings(BookingStatus status) {
+    // ============================================
+    // 4. LISTAR RESERVAS
+    // ============================================
+
+    public List<Booking> getAllBookings(
+            BookingStatus status
+    ) {
 
         if (status != null) {
             return bookingRepository.findByStatus(status);
@@ -91,41 +165,59 @@ public class BookingService {
         return bookingRepository.findAll();
     }
 
+    // ============================================
+    // 5. PUBLICAR EVENTOS EN RABBITMQ
+    // ============================================
+
     private void publishStatusEvent(Booking booking) {
 
         BookingEventMessage message = createEventMessage(
                 booking,
                 "BOOKING_STATUS_CHANGED",
-                "La reserva cambió al estado "
+                "La reserva cambio al estado "
                         + booking.getStatus().name()
         );
 
         switch (booking.getStatus()) {
 
             case APROBADA -> {
+
+                // Notificacion de aprobacion.
                 bookingMessageProducer.sendEmailMessage(message);
+
+                // Ticket de preparacion.
                 bookingMessageProducer.sendPrepMessage(message);
             }
 
             case EN_PREPARACION -> {
+
                 bookingMessageProducer.sendPrepMessage(message);
             }
 
             case DEVUELTA -> {
+
+                // Notificacion de devolucion.
                 bookingMessageProducer.sendEmailMessage(message);
+
+                // Generacion del voucher.
                 bookingMessageProducer.sendVoucherMessage(message);
             }
 
             case CANCELADA -> {
+
                 bookingMessageProducer.sendEmailMessage(message);
             }
 
             default -> {
-                // No se requiere mensajería adicional
-                // para este estado
+
+                // Otros estados sin mensajes RabbitMQ.
             }
         }
     }
+
+    // ============================================
+    // 6. CREAR MENSAJE PARA RABBITMQ
+    // ============================================
 
     private BookingEventMessage createEventMessage(
             Booking booking,
@@ -135,8 +227,8 @@ public class BookingService {
 
         String eventId = UUID.randomUUID().toString();
         String traceId = UUID.randomUUID().toString();
-        String correlationId =
-                "booking-" + booking.getId();
+
+        String correlationId = "booking-" + booking.getId();
 
         return new BookingEventMessage(
                 booking.getId(),
@@ -150,27 +242,153 @@ public class BookingService {
         );
     }
 
+    // ============================================
+    // 7. PUBLICAR EVENTOS DE RESERVAS EN KAFKA
+    // ============================================
+
+    private void publishKafkaEvent(
+            Booking booking,
+            String eventType
+    ) {
+
+        BookingKafkaProducer producer =
+                kafkaProducerProvider.getIfAvailable();
+
+        if (producer == null) {
+
+            log.debug(
+                    "Kafka desactivado. No se publica evento para reserva {}",
+                    booking.getId()
+            );
+
+            return;
+        }
+
+        BookingKafkaEvent event = new BookingKafkaEvent(
+                UUID.randomUUID().toString(),
+                eventType,
+                booking.getId(),
+                booking.getStatus().name(),
+                LocalDateTime.now()
+        );
+
+        try {
+
+            producer.publish(event);
+
+            log.info(
+                    "Evento Kafka solicitado: {} | Reserva: {}",
+                    eventType,
+                    booking.getId()
+            );
+
+        } catch (RuntimeException exception) {
+
+            log.error(
+                    "No se pudo solicitar publicacion Kafka para reserva {}",
+                    booking.getId(),
+                    exception
+            );
+        }
+    }
+
+    // ============================================
+    // 8. PUBLICAR EVENTOS DE OCUPACION EN KAFKA
+    // ============================================
+
+    private void publishOccupancyEvent(
+            Booking booking,
+            String eventType
+    ) {
+
+        OccupancyKafkaProducer producer =
+                occupancyProducerProvider.getIfAvailable();
+
+        if (producer == null) {
+
+            log.debug(
+                    "Kafka de ocupacion desactivado para reserva {}",
+                    booking.getId()
+            );
+
+            return;
+        }
+
+        OccupancyKafkaEvent event = new OccupancyKafkaEvent(
+                UUID.randomUUID().toString(),
+                eventType,
+                booking.getId(),
+                booking.getResourceId(),
+                booking.getStatus().name(),
+                LocalDateTime.now()
+        );
+
+        try {
+
+            producer.publish(event);
+
+            log.info(
+                    "Evento de ocupacion solicitado: {} | Recurso: {} | Reserva: {}",
+                    eventType,
+                    booking.getResourceId(),
+                    booking.getId()
+            );
+
+        } catch (RuntimeException exception) {
+
+            log.error(
+                    "Error al solicitar evento de ocupacion para reserva {}",
+                    booking.getId(),
+                    exception
+            );
+        }
+    }
+
+    // ============================================
+    // 9. VALIDAR TRANSICIONES DE ESTADO
+    // ============================================
+
     private void validateStatusTransition(
             BookingStatus currentStatus,
             BookingStatus newStatus
     ) {
 
-        if (newStatus == BookingStatus.EN_USO
-                && currentStatus != BookingStatus.APROBADA
-                && currentStatus != BookingStatus.EN_PREPARACION) {
+        if (currentStatus == null || newStatus == null) {
 
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "No se puede pasar a EN_USO sin estar APROBADA o EN_PREPARACION"
+                    "Debe informar estados validos"
             );
         }
 
-        if (currentStatus == BookingStatus.DEVUELTA
-                || currentStatus == BookingStatus.CANCELADA) {
+        boolean allowed = switch (currentStatus) {
+
+            case SOLICITADA ->
+                    newStatus == BookingStatus.APROBADA ||
+                            newStatus == BookingStatus.CANCELADA;
+
+            case APROBADA ->
+                    newStatus == BookingStatus.EN_PREPARACION ||
+                            newStatus == BookingStatus.CANCELADA;
+
+            case EN_PREPARACION ->
+                    newStatus == BookingStatus.EN_USO ||
+                            newStatus == BookingStatus.CANCELADA;
+
+            case EN_USO ->
+                    newStatus == BookingStatus.DEVUELTA;
+
+            case DEVUELTA, CANCELADA -> false;
+        };
+
+        if (!allowed) {
 
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "No se puede modificar una reserva finalizada o cancelada"
+                    HttpStatus.CONFLICT,
+                    "Transicion de estado no permitida: "
+                            + currentStatus.name()
+                            + " -> "
+                            + newStatus.name()
             );
         }
     }
