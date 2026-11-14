@@ -1,3 +1,4 @@
+
 server:
   port: 8081
 
@@ -5,12 +6,37 @@ spring:
   application:
     name: ms-campuslab-bookings
 
+  # ==========================================
+  # RABBITMQ - NOTIFICACIONES
+  # ==========================================
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME:campuslab}
     password: ${RABBITMQ_PASSWORD:campuslab123}
 
+  # ==========================================
+  # KAFKA - EVENTOS Y AUDITORIA
+  # ==========================================
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092,localhost:19093,localhost:19094}
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+
+    properties:
+      request.timeout.ms: 30000
+
+  # ==========================================
+  # BASE DE DATOS
+  # ==========================================
   datasource:
     url: ${DB_URL:jdbc:h2:mem:testdb}
     driver-class-name: ${DB_DRIVER:org.h2.Driver}
@@ -28,7 +54,23 @@ spring:
       enabled: true
       path: /h2-console
 
+# ==========================================
+# CONFIGURACION DE CAMPUSLAB
+# ==========================================
 campuslab:
+
+  # Kafka desactivado por defecto.
+  # Se habilitara localmente durante las pruebas.
+  kafka:
+    enabled: ${CAMPUSLAB_KAFKA_ENABLED:false}
+
+    topics:
+      booking-events: campuslab.booking.events
+      occupancy-events: campuslab.occupancy.events
+
+  # ==========================================
+  # RABBITMQ
+  # ==========================================
   rabbitmq:
 
     exchanges:
