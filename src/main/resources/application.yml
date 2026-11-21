@@ -59,11 +59,20 @@ spring:
 # ==========================================
 campuslab:
 
-  # Kafka desactivado por defecto.
-  # Se habilitara localmente durante las pruebas.
+  # ==========================================
+  # KAFKA
+  # ==========================================
   kafka:
+
+    # Productores normales de reservas y ocupacion
     enabled: ${CAMPUSLAB_KAFKA_ENABLED:false}
 
+    # Productor administrativo de demostracion
+    # Se habilita solo en el entorno de pruebas
+    demo:
+      enabled: ${CAMPUSLAB_KAFKA_DEMO_ENABLED:false}
+
+    # Topicos principales de CampusLab
     topics:
       booking-events: campuslab.booking.events
       occupancy-events: campuslab.occupancy.events
