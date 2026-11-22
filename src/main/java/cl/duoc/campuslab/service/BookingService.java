@@ -268,6 +268,7 @@ public class BookingService {
                 UUID.randomUUID().toString(),
                 eventType,
                 booking.getId(),
+                booking.getResourceId(),
                 booking.getStatus().name(),
                 LocalDateTime.now()
         );

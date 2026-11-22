@@ -114,6 +114,7 @@ public class KafkaDemoProducerController {
                         eventId,
                         eventType,
                         request.bookingId(),
+                        request.resourceId(),
                         "SOLICITADA",
                         timestamp
                 );
@@ -128,6 +129,7 @@ public class KafkaDemoProducerController {
                         eventId,
                         eventType,
                         request.bookingId(),
+                        request.resourceId(),
                         "APROBADA",
                         timestamp
                 );
